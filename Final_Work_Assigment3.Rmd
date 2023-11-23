@@ -1,0 +1,513 @@
+---
+title: "Final Proyect  Supervised Methods in Machine Learning."
+author: "Julian Abello Orozco -Juan David Ortiz Cortes-Julian  Gonzalez Hernandez"
+date: "2023-11-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+\
+Supervised learning, a pivotal subset of machine learning, operates by training algorithms on labeled datasets. This technique involves teaching models using data where the relationship between input and output is already known. The goal is to enable algorithms to discern patterns, thereby making predictions or classifications on new, unseen data. Its significance spans multiple domains within data science and machine learning engineering. In predictive modeling, it's instrumental for forecasting outcomes based on input features, extensively applied in finance (for stock price predictions), healthcare (diagnosing diseases), and retail (forecasting customer behavior). Moreover, it plays a fundamental role in classification tasks (e.g., differentiating spam from non-spam emails) and regression (such as predicting house prices). Supervised learning models facilitate decision-making processes by automating insights in various realms like image recognition, natural language processing, and recommendation systems. Their forte lies in recognizing intricate patterns within datasets, uncovering relationships not immediately apparent to human analysts, thus offering invaluable insights in diverse industries.
+
+The relevance of supervised learning in data science and machine learning engineering is paramount due to its ability to extract meaningful insights from labeled data. By deciphering these patterns, it enables accurate predictions and classifications, pivotal across various industries. Its applications extend to predictive modeling, decision automation, and pattern recognition, making it an indispensable tool for understanding and leveraging data in numerous sectors. This method's capability to derive significance from labeled datasets renders it vital for driving insights and enabling informed decisions in real-world scenarios.
+
+## Theoretical Framework
+
+### **Types of Problems:**
+
+-   **Regression**: Involves predicting continuous values. For instance, predicting house prices based on features like area, location, etc.
+
+-   **Classification**: Focuses on assigning categories or labels to input data. Examples include spam/non-spam email classification or image recognition to identify objects in images.
+
+### **Algorithms:**
+
+-   **Linear Regression**: Used for regression tasks, it establishes a linear relationship between input and output variables.
+
+-   **Logistic Regression**: For classification, it estimates the probability of an instance belonging to a particular category.
+
+-   **Decision Trees, Random Forests, Support Vector Machines (SVM)**: Common algorithms for both regression and classification tasks.
+
+### **Training and Testing Models:**
+
+-   **Training**: Involves feeding labeled data to the model to learn patterns or relationships between input and output.
+
+-   **Testing**: Assessing the model's performance on unseen data to evaluate its predictive accuracy.
+
+### **Overfitting and Underfitting:**
+
+-   **Overfitting**: When a model learns too much from the training data and fails to generalize well to new data.
+
+-   **Underfitting**: Occurs when the model is too simple to capture the underlying patterns in the data.
+
+### **Cross-Validation:**
+
+-   **K-Fold Cross-Validation**: A technique where the dataset is divided into 'k' subsets. The model is trained on 'k-1' subsets and validated on the remaining subset. This process rotates until all subsets have been used for both training and validation, providing a more robust estimation of the model's performance.
+
+### **Performance Metrics:**
+
+-   **Regression**: Metrics like Mean Squared Error (MSE), Root Mean Squared Error (RMSE), or R-squared measure the accuracy of continuous value predictions.
+
+-   **Classification**: Metrics such as Accuracy, Precision, Recall, F1-score, and ROC-AUC assess the model's performance in assigning correct labels or categories.
+
+## Methodology
+
+```{r,warning = FALSE, error=FALSE, results = 'hide', include = FALSE}
+library(tidyverse)
+library(caret)
+library(class)
+library(gmodels)
+library(psych)
+library(DynamicCancerDriverKM)
+library(rpart)
+library(randomForest)
+library(e1071)
+library(kernlab)
+```
+
+The core focus of this study lies in utilizing the DynamicCancerDriverKM package to conduct comprehensive data preprocessing. This package was employed to perform thorough data analysis and refinement, effectively preparing the original dataset for subsequent analysis.
+
+Additionally, subsets of data were created from the original dataset to apply various machine learning models. These subsets were specifically designed and tailored to address the classification of different cancer types and predict relevant clinical outcomes. The diversity of models used facilitated a detailed examination of multiple facets within the data, allowing for a more precise and detailed approach in understanding the complexity of various cancer types and their potential clinical outcomes.
+
+**Initial Data Loading:**
+
+```{r, warning = FALSE, error=FALSE, results = 'hide'}
+datanormal <-(DynamicCancerDriverKM::BRCA_normal)
+dataPt <-(DynamicCancerDriverKM::BRCA_PT)
+final_data <- bind_rows(datanormal, dataPt)
+
+
+porcentaje_menor_10 <- final_data %>%
+  summarise_all(~ mean(. <400, na.rm = TRUE))
+
+
+columnas_a_eliminar <- names(porcentaje_menor_10[, porcentaje_menor_10 >= 0.8])
+
+
+final_data_filtrado <- final_data %>%
+  select(-one_of(columnas_a_eliminar))
+
+final_data_filtrado2 <- final_data_filtrado
+
+data_pii<-(DynamicCancerDriverKM::PPI)
+
+
+data_piin <- data_pii %>%
+  pivot_longer(cols = c(`Input-node Gene Symbol`, `Output-node Gene Symbol`), names_to = "variable", values_to = "gen") %>%
+  group_by(gen, variable) %>%
+  summarise(frecuencia = n()) %>%
+  pivot_wider(names_from = variable, values_from = frecuencia, values_fill = 0)
+
+
+data_piinR <- data_piin %>%
+  mutate(total_mode = `Input-node Gene Symbol` + `Output-node Gene Symbol`) %>%
+  select(total_mode) %>%
+  arrange(desc(total_mode))
+
+
+print(data_piinR)
+
+final_data_filtradox<-colnames(final_data_filtrado)[ 8:ncol(final_data_filtrado)]
+aux2 <- AMCBGeneUtils::changeGeneId(final_data_filtradox, from = "Ensembl.ID")
+
+names(final_data_filtrado)[8:12631] <- aux2$HGNC.symbol
+
+
+genes_en_final_data <- colnames(final_data_filtrado)
+
+
+data_piinR_filtrado <- data_piinR %>%
+  filter(gen %in% genes_en_final_data)
+```
+
+Two datasets, namely **`datanormal`** and **`dataPt`**, are loaded from the DynamicCancerDriverKM package. Subsequently, these datasets are merged into a single unified dataset called **`final_data`** using the **`bind_rows`** function.
+
+**Filtering Columns with Low Values:**
+
+The percentage of values below 400 in the **`final_data`** dataset is computed. Columns where more than 80% of the values are below 400 are identified. A new refined dataset, **`final_data_filtrado`**, is created by removing the previously identified columns.
+
+**Protein-Protein Interaction (PPI) Data Processing:**
+
+The **`data_pii`** dataset is loaded from the DynamicCancerDriverKM package. A pivoting and summarization process is executed to tally the frequency of interactions between genes. Total interaction counts for each gene are computed, sorted, and presented.
+
+**Column Name Modification:**
+
+Column names ranging from the 8th column to the last in **`final_data_filtrado`** are extracted. The AMCBGeneUtils package is utilized to convert gene identifiers to HGNC gene names.
+
+**Filtering Protein-Protein Interaction Data:**
+
+Genes in **`data_piinR`** are compared against columns in **`final_data_filtrado`**, and matching genes are filtered and retained
+
+The preprocessing stages were chosen to prepare the data in a specific and suitable manner for subsequent analysis. Each stage addresses key aspects of the dataset and has a defined purpose:
+
+**Initial Data Loading and Combination:**
+
+Two initial cancer-related datasets are loaded from the DynamicCancerDriverKM package. Merging these datasets into one, final_data, allows working with a more comprehensive database that could contain crucial information from multiple sources.
+
+**Filtering Low-Value Columns:**
+
+Identifies and removes columns with a significant proportion of values below a specific threshold (in this case, below 400). This step helps to reduce noise or irrelevant information in the dataset, focusing on the most significant or relevant variables for analysis.
+
+**Protein-Protein Interaction Data Processing (PPI):**
+
+Addresses protein interaction-related data, crucial in cancer study due to the importance of protein-protein interactions in biological processes. Analyzes the frequency and quantity of interactions between genes, which can reveal valuable information about the biological pathways involved in cancer.
+
+**Column Name Modification:**
+
+Updates column names to reflect more recognizable and understandable identifiers (from gene identifiers to HGNC gene names), facilitating data interpretation and analysis.
+
+**Filtering Protein-Protein Interaction Data:**
+
+Filters and retains only relevant genes that have interactions within the main dataset, further focusing the analysis on the most pertinent genetic information for the specific cancer study.
+
+These preprocessing stages were chosen to clean, prepare, and structure the data in a manner that is more suitable and meaningful for subsequent analysis related to cancer type classification and clinical outcome prediction.
+
+## Implementation
+
+###  KNN Model
+
+**Predictor Selection:**
+
+-   The first 100 elements of the first column of **`data_piinR_filtrado`** are selected.
+
+-   These elements are converted into a vector and then into characters
+
+    ```{r, warning = FALSE}
+    Predictores <- as.vector(head(data_piinR_filtrado[, 1], 100))
+    Predictores <- as.character(unlist(Predictores))
+
+    colnames(final_data_filtrado)[is.na(colnames(final_data_filtrado))] <- paste0("xs", seq_along(colnames(final_data_filtrado) == ""))
+    set.seed(23)
+    ```
+
+**Column Names Manipulation:**
+
+-   Column names in **`final_data_filtrado`** that are **`NA`** are changed to "xs1", "xs2", and so on.
+
+**Training and Test Data Preparation:**
+
+-   **`final_data_filtrado`** is divided into groups based on the **`sample_type`** variable.
+
+-   Random samples with replacement of 123 rows from each group are taken.
+
+-   A random sample index of 60% of the rows from **`final_data_filtradoe`** is chosen to create **`train.data`**.
+
+-   The remaining data is used for **`test.data`**.
+
+    ```{r, warning=FALSE}
+    final_data_filtradoe <- final_data_filtrado %>%
+      group_by(sample_type) %>%
+      sample_n(123, replace = TRUE) %>%
+      ungroup()
+
+    ```
+
+**Definition of Target Variables:**
+
+-   **`sample_type`** in both **`train.data`** and **`test.data`** is converted into a factor, indicating it's a categorical variable to be used as the target variable in the model.
+
+    ```{r, warning= FALSE}
+    sample.index <- sample(1:nrow(final_data_filtradoe), nrow(final_data_filtradoe) * 0.6, replace = FALSE)
+
+    train.data <- final_data_filtradoe[sample.index, c(Predictores, "sample_type"), drop = FALSE]
+    test.data <- final_data_filtradoe[-sample.index, c(Predictores, "sample_type"), drop = FALSE]
+
+    train.data$sample_type <- factor(train.data$sample_type)
+    test.data$sample_type <- factor(test.data$sample_type)
+
+    ```
+
+**Training the k-NN Model:**
+
+-   Control parameters are set for model training using cross-validation.
+
+-   The k-NN model is trained using the training data (**`train.data`**), searching through 50 different nearest neighbor values.
+
+-   Data preprocessing is applied (**`range`** for scaling), and multiple iterations of the model are generated to evaluate its performance.
+
+    ```{r, warning=FALSE}
+    ctrl <- trainControl(method = "cv", p = 0.6)
+    knnFit <- train(sample_type ~ .,
+                    data = train.data,
+                    method = "knn",
+                    trControl = ctrl,
+                    preProcess = c("range"),  # c("center", "scale") for z-score
+                    tuneLength = 50)
+
+    ```
+
+**Model Visualization:**
+
+-   A plot is generated to visualize the k-NN model.
+
+    ```{r}
+    plot(knnFit)
+    ```
+
+**Prediction using the k-NN Model:**
+
+-   Predictions are made using the trained model (**`knnFit`**) on the test data (**`test.data`**).
+
+    ```{r}
+    knnPredict <- predict(knnFit, newdata = test.data)
+    ```
+
+**Confusion Matrix Creation:**
+
+-   The **`confusionMatrix()`** function is used to generate a confusion matrix.
+
+-   **`knnPredict`** represents the predicted values obtained from applying the k-NN model on the test dataset.
+
+-   **`test.data$sample_type`** contains the actual values of the target variable from the test dataset.
+
+    ```{r}
+    confusionMatrix(data = knnPredict, reference = test.data$sample_type)
+    ```
+
+### Linear Regression
+
+**Data Preparation:**
+
+-   The **`sample_type`** variable in **`final_data_filtradoe`** is transformed into binary values (0 and 1) using **`mutate`** and **`ifelse`**.
+
+    ```{r}
+    final_data_filtradoe <- final_data_filtradoe %>%
+      mutate(sample_type = ifelse(sample_type == "Solid Tissue Normal", 1, 0))
+    ```
+
+**Training and Test Data Split:**
+
+-   The data is split into training (**`train.data`**) and test (**`test.data`**) sets using a previously generated index (**`sample.index`**).
+
+    ```{r}
+    train.data <- final_data_filtradoe[sample.index, c(Predictores, "sample_type"), drop = FALSE]
+    test.data <- final_data_filtradoe[-sample.index, c(Predictores, "sample_type"), drop = FALSE]
+    ```
+
+**Linear Regression Model:**
+
+-   A linear regression model (**`lm`**) is fitted with **`sample_type`** as the response variable and all other variables as predictors in **`train.data`**.
+
+    ```{r}
+    ins_model <- lm(sample_type ~ ., data = train.data)
+    ```
+
+-   A summary of the model is printed.
+
+```{r}
+summary(ins_model)
+```
+
+**Training a Linear Regression Model:**
+
+-   It uses **`trainControl`** from the **`caret`** package to set up 10-fold cross-validation for model training.
+
+-   The **`train`** function fits a linear regression model (**`method = "lm"`**) on the **`train.data`** dataset, using **`sample_type`** as the response variable and all other variables as predictors.
+
+-   The model performance and details are printed using **`print(model)`**.
+
+    ```{r, warning=FALSE}
+    train.control <- trainControl(method = "cv", number = 10)
+    model <- train(sample_type ~ .,
+                   data = train.data,
+                   method = "lm",
+                   trControl = train.control)
+    print(model)
+    ```
+
+### Decision Tree Model 
+
+**Building a Decision Tree Model (rpart):**
+
+-   It fits a decision tree model (**`method = "anova"`**) using the **`rpart`** function.
+
+-   The model is trained on the subset of data composed of **`Predictores`** and **`sample_type`** from **`final_data_filtradoe`**.
+
+-   The decision tree structure and details are printed using **`print(fit)`**.
+
+-   The **`rpart.plot::rpart.plot(fit)`** command creates a graphical visualization of the decision tree.
+
+```{r}
+fit <- rpart(sample_type ~ .,
+             method = "anova",
+             data = final_data_filtradoe[, c(Predictores, "sample_type")],
+             control = rpart.control(xval = 10))
+
+print(fit)
+
+rpart.plot::rpart.plot(fit)
+```
+
+**First Random Forest:**
+
+-   It fits a random forest model (**`randomForest`**) using **`sample_type`** as the target variable and all other variables as predictors from the dataset **`final_data_filtradoe`**.
+
+-   A prediction is made on the test data (**`test.data`**) using the fitted model (**`fit.rf`**).
+
+-   A contingency table is created to compare the actual values of **`sample_type`** with the generated predictions (**`prediction.rf`**).
+
+    ```{r,include=FALSE, warning=FALSE}
+    fit.rf <- randomForest(sample_type ~ .,
+                           data = final_data_filtradoe[, c(Predictores, "sample_type")])
+    prediction.rf <- predict(fit.rf, test.data)
+    table(test.data$sample_type, prediction.rf)
+    ```
+
+**Second Random Forest:**
+
+-   Another random forest model is fitted, similar to the first one, using the same variables from the dataset **`final_data_filtradoe`**.
+
+-   Predictions are made on the test data (**`test.data`**) using this new model.
+
+-   A data frame (**`output`**) is created containing columns "Actual" and "Predicted," representing actual values and predictions, respectively.
+
+-   The Root Mean Squared Error (RMSE) is computed to evaluate the prediction accuracy, and a summary displaying the initial rows of this data frame is printed
+
+```{r,warning=FALSE}
+fit.rf <- randomForest(sample_type ~ .,
+                       data = final_data_filtradoe[, c(Predictores, "sample_type")])
+
+
+prediction.rf <- predict(fit.rf, test.data)
+output <- data.frame(Actual = test.data$sample_type, Predicted = prediction.rf)
+RMSE = sqrt(sum((output$Actual - output$Predicted)^2) / nrow(output))
+
+print(head(output))
+```
+
+### Support Vector Machines
+
+**Data Preparation:**
+
+-   Converts the response variable (**`sample_type`**) into a factor, which is the required format for classification models in R.
+
+    ```{r}
+    final_data_filtradoe$sample_type <- as.factor(final_data_filtradoe$sample_type)
+    ```
+
+**Data Splitting:**
+
+-   Splits the data into training (**`train.data`**) and test (**`test.data`**) sets using a random sampling of 70% of the data for training and the remaining 30% for testing.
+
+    ```{r}
+    set.seed(123)
+    sample.index <- sample(1:nrow(final_data_filtradoe), nrow(final_data_filtradoe) * 0.7, replace = FALSE)
+    train.data <- final_data_filtradoe[sample.index, c(Predictores, "sample_type"), drop = FALSE]
+    test.data <- final_data_filtradoe[-sample.index, c(Predictores, "sample_type"), drop = FALSE]
+    ```
+
+**Hyperparameter Tuning - Linear SVM:**
+
+-   Uses the **`tune`** function from the **`e1071`** package to search for the best hyperparameters for a linear SVM model.
+
+-   Specifies a list of cost values to explore and find the best linear SVM model.
+
+    ```{r}
+    tune.out <- tune(svm,
+                     sample_type ~ .,
+                     data = train.data,
+                     kernel = "linear",
+                     ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+    ```
+
+**Configuration of Linear SVM Model:**
+
+-   Configures a linear SVM model (**`svm_model`**) using the best hyperparameters found during the hyperparameter search.
+
+    ```{r}
+    bestmod <- tune.out$best.model
+    svm_model <- svm(sample_type ~ ., data = train.data, kernel = "linear", cost = bestmod[["cost"]])
+
+    ```
+
+**Prediction on Test Set:**
+
+-   Makes predictions (**`svm_predict`**) on the test dataset (**`test.data`**) using the trained SVM model (**`svm_model`**).
+
+    ```{r}
+    svm_predict <- predict(svm_model, newdata = test.data)
+    ```
+
+**Model Evaluation:**
+
+-   Evaluates the model's performance on the test set by generating a confusion matrix and relevant classification metrics using the **`confusionMatrix`** function from the **`caret`** package. This assessment helps understand how well the model predicts the classes in the test data (**`test.data$sample_type`**) compared to the predicted classes (**`svm_predict`**).
+
+    ```{r}
+    confusionMatrix(data = svm_predict, reference = test.data$sample_type)
+    ```
+
+**Hyperparameter Tuning - Radial SVM:**
+
+-   Conducts a search for optimal hyperparameters for a radial SVM model using the **`tune`** function from the **`e1071`** package. It explores various cost values (**`cost`**) specified in the **`ranges`** parameter.
+
+    ```{r}
+    tune.out <- tune(svm,
+                     sample_type ~ .,
+                     data = train.data,
+                     kernel = "radial",
+                     ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+    ```
+
+**Optimal Model Configuration:**
+
+-   Retrieves the best model (**`svm_model`**) obtained from the hyperparameter tuning based on the lowest error metrics, using **`bestmod`** from the **`tune.out`** results.
+
+    ```{r}
+    bestmod <- tune.out$best.model
+
+    svm_model <- svm(sample_type ~ ., data = train.data, kernel = "radial", cost = bestmod[["cost"]])
+    ```
+
+**Prediction and Evaluation with Tuned Model:**
+
+-   Applies the optimized SVM model (**`svm_model`**) on the test set (**`test.data`**) to generate new predictions (**`svm_predict`**).
+
+-   Evaluates the performance of the tuned SVM model on the test data using the **`confusionMatrix`** function from the **`caret`** package, calculating the confusion matrix and related classification metrics.
+
+```{r}
+svm_predict <- predict(svm_model, newdata = test.data)
+confusionMatrix(data = svm_predict, reference = test.data$sample_type)
+
+```
+
+## Results and Discussion
+
+he provided code encompasses the implementation of various supervised learning models, following a detailed process of data preprocessing and algorithm training. Starting with the loading of datasets from the DynamicCancerDriverKM package, they are merged and prepared for analysis. A crucial step involves removing columns with low values, ensuring the relevance of information and reducing noise in the final dataset.
+
+A deeper dive into Protein-Protein Interaction (PPI) processing involves analyzing interaction frequencies and organizing information to better understand biological patterns relevant to cancer study. Additionally, column name modifications are made to facilitate data interpretation, and relevant genes are filtered to focus the analysis on the most pertinent genetic information.
+
+The implementation of models is broken down into various approaches, from using K-Nearest Neighbors (KNN) to linear regression models, decision trees, random forests, and Support Vector Machines (SVM). Each model is tailored to the prepared data, trained, and its performance evaluated using methods such as cross-validation, prediction, and generating confusion matrices.
+
+However, notable challenges emerged in the process. Handling incomplete or missing data required specific strategies to ensure the integrity of the datasets. Selecting relevant features for each model and optimizing hyperparameters were critical aspects to improve prediction accuracy. Furthermore, evaluating the models' performance using appropriate metrics was essential to understand the effectiveness of each supervised learning approach.
+
+## Conclusion
+
+The findings from the implemented supervised learning models provide valuable insights for a data scientist or machine learning engineer.
+
+Firstly, the techniques showcased the importance of meticulous data preprocessing. Filtering columns, handling missing data, and processing domain-specific information, like Protein-Protein Interactions (PPI), were pivotal. These steps highlighted the significance of understanding the data domain and tailoring preprocessing techniques accordingly.
+
+The model implementations demonstrated the versatility of supervised learning algorithms---KNN, linear regression, decision trees, random forests, and SVM---in handling diverse data types and tasks. Each model had its strengths and weaknesses, showcasing the need to choose models tailored to specific data characteristics and problem types.
+
+The challenges encountered, such as handling missing data, feature selection, and hyperparameter optimization, underscored the critical thinking and problem-solving skills required in the role of a data scientist or machine learning engineer. These challenges often demand creativity, domain knowledge, and a deep understanding of model behavior to make informed decisions and improve model performance.
+
+Additionally, the emphasis on model evaluation using various performance metrics highlighted the importance of robust evaluation methodologies. Understanding metrics like accuracy, precision, recall, and area under the ROC curve aids in effectively gauging model effectiveness and making informed decisions about model deployment.
+
+Overall, the findings stress the multidimensional skill set needed in these roles---from technical expertise in algorithm implementation and data preprocessing to domain knowledge and a strong grasp of evaluation metrics. The ability to navigate challenges and make data-driven decisions based on model performance insights is crucial for success in these positions.
+
+## References
+
+-   Guo, G., Wang, H., Bell, D., Bi, Y., & Greer, K. (2003). KNN model-based approach in classification. In *On The Move to Meaningful Internet Systems 2003: CoopIS, DOA, and ODBASE: OTM Confederated International Conferences, CoopIS, DOA, and ODBASE 2003, Catania, Sicily, Italy, November 3-7, 2003. Proceedings* (pp. 986-996). Springer Berlin Heidelberg.
+
+-   Zhang, H., Berg, A. C., Maire, M., & Malik, J. (2006, June). SVM-KNN: Discriminative nearest neighbor classification for visual category recognition. In *2006 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR'06)* (Vol. 2, pp. 2126-2136). IEEE.
+
+-   Hoffmann, J. P. (2021). *Linear regression models: applications in R*. Crc Press.
+
+-   Maulud, D., & Abdulazeez, A. M. (2020). A review on linear regression comprehensive in machine learning. *Journal of Applied Science and Technology Trends*, *1*(4), 140-147.
+
+-   Rakhmawan, S. A., Omar, M. H., Riaz, M., & Abbas, N. (2023). Hotelling T2 control chart for detecting changes in mortality models based on machine-learning decision tree. *Mathematics*, *11*(3), 566.
+
+-   Cervantes, J., Garcia-Lamont, F., Rodríguez-Mazahua, L., & Lopez, A. (2020). A comprehensive survey on support vector machine classification: Applications, challenges and trends. *Neurocomputing*, *408*, 189-215.
